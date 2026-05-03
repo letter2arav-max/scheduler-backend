@@ -1,3 +1,5 @@
+import testRoutes from "./src/routes/testRoutes.js";
+
 const path = require('path');
 const dotenv = require('dotenv');
 
@@ -10,3 +12,5 @@ const testRoutes = require('./src/routes/testRoutes');
 const { startServer } = require('./server');
 
 startServer({ testRoutes });
+
+app.use("/", testRoutes);

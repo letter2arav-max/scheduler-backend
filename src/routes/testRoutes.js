@@ -1,67 +1,24 @@
-const express = require('express');
-
-const { sendWhatsAppMessage } = require('../../services');
+import express from "express";
+import { sendWhatsAppMessage } from "../services/whatsappService.js";
 
 const router = express.Router();
 
-/**
- * GET /test-whatsapp — send a one-off WhatsApp via Twilio (for manual checks).
- */
-router.get('/test-whatsapp', async (req, res) => {
-  console.log('[test-whatsapp] route hit');
-
-  const to = process.env.TEST_WHATSAPP_TO?.trim();
-  if (!to) {
-    console.error(
-      '[test-whatsapp] TEST_WHATSAPP_TO is missing; set it in .env (quoted E.164, e.g. TEST_WHATSAPP_TO="+919629071076")',
-    );
-    return res.status(400).json({
-      status: 'error',
-      error:
-        'TEST_WHATSAPP_TO is not set. Add it to your .env with the full number in quotes.',
-    });
-  }
-
-  const digitsOnly = to.replace(/\D/g, '');
-  console.log(
-    '[test-whatsapp] TEST_WHATSAPP_TO raw length:',
-    to.length,
-    'digits:',
-    digitsOnly.length,
-    '(preview:',
-    to.slice(0, 4) + '…' + to.slice(-4),
-    ')',
-  );
-
-  const body =
-    process.env.TEST_WHATSAPP_MESSAGE?.trim() ||
-    'Test message from scheduler backend.';
-
+router.get("/test-whatsapp", async (req, res) => {
   try {
-    const result = await sendWhatsAppMessage(to, body);
+    const number = "+919629071076"; // YOUR NUMBER
 
-    if (!result.success) {
-      console.error(
-        '[test-whatsapp] send failed:',
-        result.error,
-        result.code != null ? `code=${result.code}` : '',
-      );
-      return res.status(500).json({
-        status: 'error',
-        error: result.error,
-        ...(result.code != null ? { code: result.code } : {}),
-      });
-    }
+    console.log("TEST ROUTE HIT");
+    console.log("TEST NUMBER:", number);
 
-    console.log('[test-whatsapp] message sent, sid:', result.messageSid);
-    return res.json({ status: 'message sent' });
+    const result = await sendWhatsAppMessage(number, "Test message from backend");
+
+    console.log("TWILIO RESULT:", result?.sid || result);
+
+    return res.json({ status: "message sent" });
   } catch (err) {
-    console.error('[test-whatsapp] unexpected error:', err);
-    return res.status(500).json({
-      status: 'error',
-      error: err instanceof Error ? err.message : String(err),
-    });
+    console.error("TEST ROUTE ERROR:", err);
+    return res.status(500).json({ status: "error", error: err.message });
   }
 });
 
-module.exports = router;
+export default router;

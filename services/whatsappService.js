@@ -1,107 +1,24 @@
-const { getTwilioClient, getTwilioWhatsAppFrom } = require('../config/twilio');
+import twilio from "twilio";
 
-/**
- * Normalize recipient to Twilio WhatsApp address: whatsapp:+E164...
- * @param {string} to
- * @returns {string}
- */
-function formatWhatsAppTo(to) {
-  if (to == null || typeof to !== 'string') {
-    throw new Error('sendWhatsAppMessage: to must be a non-empty string');
-  }
+const client = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
+);
 
-  const trimmed = to.trim();
-  if (!trimmed) {
-    throw new Error('sendWhatsAppMessage: to must be a non-empty string');
-  }
-
-  if (/^whatsapp:/i.test(trimmed)) {
-    const rest = trimmed.replace(/^whatsapp:/i, '').trim();
-    const digits = rest.replace(/\D/g, '');
-    if (!digits) {
-      throw new Error('sendWhatsAppMessage: to has no dialable digits');
-    }
-    if (digits.length < 10) {
-      throw new Error(
-        `sendWhatsAppMessage: number too short (${digits.length} digits after normalizing). ` +
-          'Use full E.164 (e.g. +919629071076). Placeholders like +91XXXXXXXXXX become +91 only.',
-      );
-    }
-    return `whatsapp:+${digits}`;
-  }
-
-  const digits = trimmed.replace(/\D/g, '');
-  if (!digits) {
-    throw new Error('sendWhatsAppMessage: to has no dialable digits');
-  }
-  if (digits.length < 10) {
-    throw new Error(
-      `sendWhatsAppMessage: number too short (${digits.length} digits). ` +
-        'Use full E.164 including national number (e.g. +919629071076).',
-    );
-  }
-
-  return `whatsapp:+${digits}`;
-}
-
-/**
- * @typedef {{ success: true, messageSid: string, status?: string }} WhatsAppSendSuccess
- * @typedef {{ success: false, error: string, code?: string | number }} WhatsAppSendFailure
- * @typedef {WhatsAppSendSuccess | WhatsAppSendFailure} WhatsAppSendResult
- */
-
-/**
- * Send a WhatsApp message via Twilio (sandbox uses fixed `from`).
- * @param {string} to - E.164 or local digits, e.g. "+919876543210" or "whatsapp:+919876543210"
- * @param {string} message
- * @returns {Promise<WhatsAppSendResult>}
- */
-async function sendWhatsAppMessage(to, message) {
-  if (message == null || typeof message !== 'string' || !message.trim()) {
-    return {
-      success: false,
-      error: 'sendWhatsAppMessage: message must be a non-empty string',
-    };
-  }
-
-  let toAddr;
+export const sendWhatsAppMessage = async (to, message) => {
   try {
-    toAddr = formatWhatsAppTo(to);
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
+    console.log("SENDING TO:", to);
 
-  const from = getTwilioWhatsAppFrom();
-
-  try {
-    const client = getTwilioClient();
-    const created = await client.messages.create({
-      from,
-      to: toAddr,
-      body: message.trim(),
+    const response = await client.messages.create({
+      from: "whatsapp:+14155238886",
+      to: `whatsapp:${to}`,   // IMPORTANT
+      body: message,
     });
 
-    return {
-      success: true,
-      messageSid: created.sid,
-      status: created.status,
-    };
-  } catch (err) {
-    const code = err && typeof err === 'object' && 'code' in err ? err.code : undefined;
-    const messageText =
-      err instanceof Error ? err.message : String(err ?? 'Unknown error');
-
-    return {
-      success: false,
-      error: messageText,
-      ...(code !== undefined ? { code } : {}),
-    };
+    console.log("MESSAGE SID:", response.sid);
+    return response;
+  } catch (error) {
+    console.error("TWILIO ERROR FULL:", error);
+    throw error;
   }
-}
-
-module.exports = {
-  sendWhatsAppMessage,
 };
