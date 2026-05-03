@@ -7,12 +7,17 @@ const router = express.Router();
 router.get('/test-whatsapp', async (req, res) => {
   console.log('[test-whatsapp] route hit');
 
-  const to = process.env.TEST_WHATSAPP_TO?.trim();
+  const to =
+    process.env.TEST_WHATSAPP_TO?.trim() ||
+    process.env.TEST_WHATSAPP_FALLBACK?.trim();
   if (!to) {
-    console.error('[test-whatsapp] TEST_WHATSAPP_TO is not set');
+    console.error(
+      '[test-whatsapp] Set TEST_WHATSAPP_TO or TEST_WHATSAPP_FALLBACK',
+    );
     return res.status(400).json({
       status: 'error',
-      error: 'Set TEST_WHATSAPP_TO in .env (e.g. "+919629071076").',
+      error:
+        'Set TEST_WHATSAPP_TO (or TEST_WHATSAPP_FALLBACK) in .env, e.g. "+919629071076".',
     });
   }
 

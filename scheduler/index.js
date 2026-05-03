@@ -2,11 +2,18 @@ const cron = require('node-cron');
 
 const { userService, schedulerLogService, whatsappService } = require('../services');
 const { getIstMessageSlot, IST_TIMEZONE } = require('./istSlot');
+const { decideTrainingMessage } = require('./trainingDecision');
 
 /** Every minute. Override with SCHEDULER_CRON. */
 const DEFAULT_CRON = '* * * * *';
 
+const COOLDOWN_MS =
+  Math.max(0, Number(process.env.SCHEDULER_SEND_COOLDOWN_MINUTES) || 180) *
+  60 *
+  1000;
+
 /**
+ * Resolve dialable number (same field order as webhook / userService).
  * @param {unknown} user
  * @returns {string | null}
  */
@@ -14,15 +21,36 @@ function getUserPhone(user) {
   if (user == null || typeof user !== 'object') {
     return null;
   }
-  const phone = user.phone;
-  if (typeof phone === 'string' && phone.trim()) {
-    return phone.trim();
+  const keys = [
+    'phone',
+    'whatsapp_phone',
+    'whatsapp',
+    'phone_number',
+    'mobile',
+  ];
+  for (const key of keys) {
+    const v = user[key];
+    if (typeof v === 'string' && v.trim()) {
+      return v.trim();
+    }
   }
   return null;
 }
 
 /**
- * Fetch users every tick; for each user, use IST slot, send WhatsApp, log on success.
+ * @param {unknown} createdAt
+ * @returns {number | null} epoch ms
+ */
+function parseCreatedAt(createdAt) {
+  if (createdAt == null) {
+    return null;
+  }
+  const t = new Date(createdAt).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+/**
+ * Fetch users; in IST notify windows, send state-based training message via WhatsApp and log.
  * @returns {Promise<void>}
  */
 async function runScheduler() {
@@ -34,12 +62,15 @@ async function runScheduler() {
     return;
   }
 
-  const slot = getIstMessageSlot();
-  if (!slot) {
+  if (!Array.isArray(users) || users.length === 0) {
     return;
   }
 
-  const { message, type: messageType } = slot;
+  if (!getIstMessageSlot()) {
+    return;
+  }
+
+  const now = new Date();
 
   for (const user of users) {
     try {
@@ -56,11 +87,43 @@ async function runScheduler() {
         continue;
       }
 
+      if (COOLDOWN_MS > 0) {
+        try {
+          const lastSent =
+            await schedulerLogService.getLatestSentLogByUserId(userId);
+          const ts = parseCreatedAt(lastSent?.created_at);
+          if (ts != null && now.getTime() - ts < COOLDOWN_MS) {
+            console.log(
+              '[scheduler] skip cooldown user=',
+              userId,
+              'last_sent_min_ago=',
+              Math.round((now.getTime() - ts) / 60000),
+            );
+            continue;
+          }
+        } catch (coolErr) {
+          console.error(
+            '[scheduler] cooldown check failed (continuing):',
+            coolErr.message,
+          );
+        }
+      }
+
+      const { message, decision_type: decisionType } = decideTrainingMessage(
+        user,
+        now,
+      );
+
+      console.log('[scheduler] user:', userId, 'phone:', phone);
       console.log(
-        '[scheduler] user phone:',
-        phone,
-        '| IST slot:',
-        messageType,
+        '[scheduler] state:',
+        {
+          sleep_hours: user.sleep_hours,
+          fatigue_level: user.fatigue_level,
+          last_workout_date: user.last_workout_date,
+        },
+        '| decision_type:',
+        decisionType,
         '| TZ:',
         IST_TIMEZONE,
       );
@@ -74,11 +137,27 @@ async function runScheduler() {
           phone,
           result.error,
         );
+        try {
+          await schedulerLogService.createLog(
+            userId,
+            `${message} | ${result.error}`,
+            'failed',
+            { decision_type: decisionType },
+          );
+        } catch (logErr) {
+          console.error(
+            '[scheduler] createLog failed (failed status):',
+            userId,
+            logErr.message,
+          );
+        }
         continue;
       }
 
       try {
-        await schedulerLogService.createLog(userId, message, 'sent');
+        await schedulerLogService.createLog(userId, message, 'sent', {
+          decision_type: decisionType,
+        });
       } catch (logErr) {
         console.error(
           '[scheduler] createLog failed after send:',
@@ -118,7 +197,7 @@ function startScheduler() {
   }, options);
 
   console.log(
-    `[scheduler] cron started: "${expression}" (messages use IST: ${IST_TIMEZONE})`,
+    `[scheduler] cron "${expression}" | IST windows | cooldown ${COOLDOWN_MS / 60000}m | TZ ${IST_TIMEZONE}`,
   );
 }
 

@@ -1,7 +1,21 @@
 const { getTwilioClient, getTwilioWhatsAppFrom } = require('../config/twilio');
 
 /**
+ * Redact middle digits for logs.
+ * @param {string} whatsappTo e.g. whatsapp:+9196...
+ * @returns {string}
+ */
+function maskWhatsAppTo(whatsappTo) {
+  const digits = String(whatsappTo).replace(/\D/g, '');
+  if (digits.length < 6) {
+    return '[redacted]';
+  }
+  return `whatsapp:+${digits.slice(0, 3)}…${digits.slice(-4)}`;
+}
+
+/**
  * Normalize recipient to Twilio WhatsApp address: whatsapp:+E164...
+ * Twilio expects `whatsapp:<E164>` e.g. whatsapp:+9196...
  * @param {string} to
  * @returns {string}
  */
@@ -73,6 +87,16 @@ async function sendWhatsAppMessage(to, message) {
 
   const from = getTwilioWhatsAppFrom();
 
+  console.log(
+    '[whatsapp] send',
+    'from=',
+    from,
+    'to=',
+    maskWhatsAppTo(toAddr),
+    'len=',
+    message.trim().length,
+  );
+
   try {
     const client = getTwilioClient();
     const created = await client.messages.create({
@@ -80,6 +104,8 @@ async function sendWhatsAppMessage(to, message) {
       to: toAddr,
       body: message.trim(),
     });
+
+    console.log('[whatsapp] ok sid=', created.sid, 'status=', created.status);
 
     return {
       success: true,
@@ -91,6 +117,8 @@ async function sendWhatsAppMessage(to, message) {
       err && typeof err === 'object' && 'code' in err ? err.code : undefined;
     const messageText =
       err instanceof Error ? err.message : String(err ?? 'Unknown error');
+
+    console.error('[whatsapp] error', messageText, code != null ? `code=${code}` : '');
 
     return {
       success: false,

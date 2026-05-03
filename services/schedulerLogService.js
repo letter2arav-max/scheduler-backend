@@ -6,9 +6,10 @@ const LOGS_TABLE = 'scheduler_logs';
  * @param {string} user_id
  * @param {string} message
  * @param {string} status
+ * @param {Record<string, unknown>} [extra] e.g. { decision_type: 'sleep_based' }
  * @returns {Promise<Record<string, unknown>>}
  */
-async function createLog(user_id, message, status) {
+async function createLog(user_id, message, status, extra = {}) {
   if (!user_id || typeof user_id !== 'string') {
     throw new Error('createLog requires a non-empty string user_id');
   }
@@ -21,9 +22,11 @@ async function createLog(user_id, message, status) {
 
   const supabase = getSupabaseClient();
 
+  const row = { user_id, message, status, ...extra };
+
   const { data, error } = await supabase
     .from(LOGS_TABLE)
-    .insert({ user_id, message, status })
+    .insert(row)
     .select()
     .single();
 
@@ -105,8 +108,39 @@ async function getLatestLogByUserId(user_id) {
   return data;
 }
 
+/**
+ * Latest row with status `sent` (outbound nudge), for cooldown / dedupe.
+ * @param {string} user_id
+ * @returns {Promise<Record<string, unknown> | null>}
+ */
+async function getLatestSentLogByUserId(user_id) {
+  if (!user_id || typeof user_id !== 'string') {
+    throw new Error('getLatestSentLogByUserId requires a non-empty string user_id');
+  }
+
+  const supabase = getSupabaseClient();
+
+  const { data, error } = await supabase
+    .from(LOGS_TABLE)
+    .select('*')
+    .eq('user_id', user_id)
+    .eq('status', 'sent')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    const err = new Error(`getLatestSentLogByUserId failed: ${error.message}`);
+    err.cause = error;
+    throw err;
+  }
+
+  return data;
+}
+
 module.exports = {
   createLog,
   updateLogStatus,
   getLatestLogByUserId,
+  getLatestSentLogByUserId,
 };

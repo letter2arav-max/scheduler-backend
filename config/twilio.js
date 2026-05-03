@@ -1,6 +1,9 @@
 const twilio = require('twilio');
 
-/** Twilio WhatsApp sandbox sender; override with TWILIO_WHATSAPP_FROM. */
+/**
+ * Dev/sandbox default only — set TWILIO_WHATSAPP_FROM in production.
+ * Not a secret; still prefer env per environment.
+ */
 const DEFAULT_WHATSAPP_FROM = 'whatsapp:+14155238886';
 
 /**

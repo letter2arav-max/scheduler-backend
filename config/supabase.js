@@ -1,11 +1,12 @@
 const { createClient } = require('@supabase/supabase-js');
 
 /**
+ * Server-side client: use service role key in SUPABASE_KEY for RLS bypass (never expose to clients).
  * @returns {import('@supabase/supabase-js').SupabaseClient}
  */
 function createSupabaseClient() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_KEY;
+  const url = process.env.SUPABASE_URL?.trim();
+  const key = process.env.SUPABASE_KEY?.trim();
 
   if (!url || !key) {
     throw new Error('SUPABASE_URL and SUPABASE_KEY must be set');
